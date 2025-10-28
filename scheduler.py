@@ -1,11 +1,26 @@
 import os
 import asyncio
 import logging
-from datetime import datetime, time
+from datetime import datetime
 from bot import movie_poster
 
+async def safe_post(operation, operation_name):
+    """Safely execute a posting operation with error handling"""
+    try:
+        logging.info(f"🔄 Attempting: {operation_name}")
+        success = await operation()
+        if success:
+            logging.info(f"✅ Success: {operation_name}")
+        else:
+            logging.error(f"❌ Failed: {operation_name}")
+        return True  # Continue running even if post fails
+    except Exception as e:
+        logging.error(f"💥 CRITICAL ERROR in {operation_name}: {e}")
+        logging.error("🔄 Continuing to next cycle despite error...")
+        return True  # Always continue
+
 async def main():
-    """Main scheduler loop with immediate posting"""
+    """Main scheduler loop with robust error handling"""
     logging.info("🤖 Movie Auto-Poster Bot Starting...")
     
     # Verify environment variables
@@ -24,16 +39,24 @@ async def main():
     
     # Test bot connection
     logging.info("🔌 Testing bot connection...")
-    connection_ok = await movie_poster.test_bot_connection()
-    if not connection_ok:
-        logging.error("❌ Bot connection test failed. Please check BOT_TOKEN.")
+    try:
+        connection_ok = await movie_poster.test_bot_connection()
+        if not connection_ok:
+            logging.error("❌ Bot connection test failed. Please check BOT_TOKEN.")
+            return
+    except Exception as e:
+        logging.error(f"❌ Bot connection test error: {e}")
         return
     
     # Test TMDB API connection
     logging.info("🔌 Testing TMDB API connection...")
-    api_ok = await movie_poster.test_api_connection()
-    if not api_ok:
-        logging.error("❌ TMDB API test failed. Please check TMDB_API_KEY.")
+    try:
+        api_ok = await movie_poster.test_api_connection()
+        if not api_ok:
+            logging.error("❌ TMDB API test failed. Please check TMDB_API_KEY.")
+            return
+    except Exception as e:
+        logging.error(f"❌ TMDB API test error: {e}")
         return
     
     # Send startup message
@@ -56,33 +79,37 @@ async def main():
     while True:
         try:
             current_time = datetime.now()
-            logging.info(f"🕒 Posting cycle #{post_counter + 1} at {current_time.strftime('%H:%M:%S')}")
+            logging.info(f"🔄 ===== POSTING CYCLE #{post_counter + 1} at {current_time.strftime('%H:%M:%S')} =====")
             
-            # Rotate through different movie types
+            # Rotate through different movie types with safe execution
             if post_counter % 4 == 0:
-                logging.info("🎬 Posting: Latest Movies")
-                await movie_poster.post_latest_movies()
+                await safe_post(movie_poster.post_latest_movies, "Latest Movies")
             elif post_counter % 4 == 1:
-                logging.info("🔥 Posting: Trending Movies")
-                await movie_poster.post_trending_movies()
+                await safe_post(movie_poster.post_trending_movies, "Trending Movies")
             elif post_counter % 4 == 2:
-                logging.info("📅 Posting: Upcoming Movies")
-                await movie_poster.post_upcoming_movies()
+                await safe_post(movie_poster.post_upcoming_movies, "Upcoming Movies")
             else:
-                logging.info("📊 Posting: Daily Update")
-                await movie_poster.post_daily_update()
+                await safe_post(movie_poster.post_daily_update, "Daily Update")
             
             post_counter += 1
             logging.info(f"✅ Completed posting cycle #{post_counter}")
-            logging.info("⏰ Waiting 60 seconds for next post...")
+            logging.info(f"⏰ Next cycle in 60 seconds... (Will be cycle #{post_counter + 1})")
             
             # Wait for 60 seconds before next post
             await asyncio.sleep(60)
             
         except Exception as e:
-            logging.error(f"❌ Error in posting cycle: {e}")
-            logging.info("⏰ Retrying in 60 seconds...")
+            logging.error(f"💥 MAIN LOOP ERROR: {e}")
+            logging.info("🔄 Restarting main loop in 60 seconds...")
             await asyncio.sleep(60)
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    # Add global exception handler
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logging.info("🛑 Bot stopped by user")
+    except Exception as e:
+        logging.error(f"💥 GLOBAL ERROR: {e}")
+        logging.info("🔄 Restarting bot...")
+        # You could add auto-restart logic here if needed
