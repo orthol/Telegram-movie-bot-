@@ -18,8 +18,14 @@ TMDB_API_KEY = os.getenv('TMDB_API_KEY')
 CHANNEL_USERNAME = os.getenv('CHANNEL_USERNAME', '@YourChannelUsername')
 
 # Validate required environment variables
-if not BOT_TOKEN or not TMDB_API_KEY or not CHANNEL_USERNAME:
-    logging.error("❌ Missing required environment variables")
+if not BOT_TOKEN:
+    logging.error("❌ BOT_TOKEN environment variable is missing")
+    exit(1)
+if not TMDB_API_KEY:
+    logging.error("❌ TMDB_API_KEY environment variable is missing")
+    exit(1)
+if not CHANNEL_USERNAME:
+    logging.error("❌ CHANNEL_USERNAME environment variable is missing")
     exit(1)
 
 class MoviePoster:
@@ -29,9 +35,6 @@ class MoviePoster:
             self.tmdb_base_url = "https://api.themoviedb.org/3"
             self.image_base_url = "https://image.tmdb.org/t/p/w500"
             logging.info("✅ MoviePoster initialized successfully")
-            
-            # Test bot connection
-            asyncio.run(self.test_bot_connection())
             
         except Exception as e:
             logging.error(f"❌ Failed to initialize MoviePoster: {e}")
