@@ -54,18 +54,27 @@ class MoviePoster:
             return False
 
     def get_movies(self, endpoint, params=None):
-        """Fetch movies from TMDB API"""
+        """Fetch movies from TMDB API with detailed debugging"""
         url = f"{self.tmdb_base_url}/{endpoint}"
         default_params = {'api_key': TMDB_API_KEY, 'language': 'en-US'}
         if params:
             default_params.update(params)
             
+        logging.info(f"🔍 Fetching from TMDB API: {endpoint}")
+        logging.info(f"🔍 API URL: {url}")
+        logging.info(f"🔍 Using API Key: {TMDB_API_KEY[:10]}...")  # Log first 10 chars only
+        
         try:
             response = requests.get(url, params=default_params, timeout=10)
+            logging.info(f"🔍 TMDB API Response Status: {response.status_code}")
+            
             if response.status_code == 200:
-                return response.json()
+                data = response.json()
+                logging.info(f"🔍 TMDB API Success! Got {len(data.get('results', []))} movies")
+                return data
             else:
                 logging.error(f"❌ TMDB API returned status code: {response.status_code}")
+                logging.error(f"❌ TMDB API Response: {response.text}")
                 return None
         except Exception as e:
             logging.error(f"❌ TMDB API Error: {e}")
@@ -96,14 +105,19 @@ class MoviePoster:
         
         poster_path = movie.get('poster_path')
         if poster_path:
-            return message, f"{self.image_base_url}{poster_path}"
+            poster_url = f"{self.image_base_url}{poster_path}"
+            logging.info(f"📸 Poster URL: {poster_url}")
+            return message, poster_url
         
+        logging.info("📸 No poster available for this movie")
         return message, None
 
     async def post_to_channel(self, message, poster_url=None, retries=3):
         """Helper function to post to channel with retries"""
         for attempt in range(retries):
             try:
+                logging.info(f"📤 Attempting to post to channel (attempt {attempt + 1})")
+                
                 if poster_url:
                     await self.bot.send_photo(
                         chat_id=CHANNEL_USERNAME,
@@ -141,6 +155,21 @@ class MoviePoster:
                     return False
         return False
 
+    async def test_api_connection(self):
+        """Test TMDB API connection"""
+        logging.info("🔍 Testing TMDB API connection...")
+        data = self.get_movies("movie/now_playing", {'page': 1})
+        
+        if data and 'results' in data:
+            logging.info(f"✅ TMDB API Test: SUCCESS - Found {len(data['results'])} movies")
+            if data['results']:
+                movie = data['results'][0]
+                logging.info(f"✅ Sample movie: {movie.get('title')} - {movie.get('release_date')}")
+            return True
+        else:
+            logging.error("❌ TMDB API Test: FAILED - Could not fetch movies")
+            return False
+
     async def post_latest_movies(self):
         """Post latest movies to channel"""
         logging.info("📤 Posting latest movies...")
@@ -153,12 +182,18 @@ class MoviePoster:
         movies = data['results'][:2]
         success_count = 0
         
+        logging.info(f"📤 Preparing to post {len(movies)} latest movies")
+        
         for movie in movies:
             message, poster_url = self.format_movie_post(movie, "Latest Releases")
+            logging.info(f"📤 Posting: {movie.get('title')}")
             success = await self.post_to_channel(message, poster_url)
             if success:
                 success_count += 1
-                await asyncio.sleep(5)  # Delay between posts
+                logging.info(f"✅ Successfully posted: {movie.get('title')}")
+            else:
+                logging.error(f"❌ Failed to post: {movie.get('title')}")
+            await asyncio.sleep(5)  # Delay between posts
 
         logging.info(f"✅ Posted {success_count}/{len(movies)} latest movies")
         return success_count > 0
@@ -180,7 +215,7 @@ class MoviePoster:
             success = await self.post_to_channel(message, poster_url)
             if success:
                 success_count += 1
-                await asyncio.sleep(5)
+            await asyncio.sleep(5)
 
         logging.info(f"✅ Posted {success_count}/{len(movies)} trending movies")
         return success_count > 0
@@ -202,7 +237,7 @@ class MoviePoster:
             success = await self.post_to_channel(message, poster_url)
             if success:
                 success_count += 1
-                await asyncio.sleep(5)
+            await asyncio.sleep(5)
 
         logging.info(f"✅ Posted {success_count}/{len(movies)} upcoming movies")
         return success_count > 0
