@@ -6,44 +6,63 @@ from datetime import datetime
 from bot import movie_poster
 import logging
 
-async def run_scheduled_task(task_function, task_name):
-    """Run a scheduled task with error handling"""
-    try:
-        logging.info(f"🕒 Starting: {task_name}")
-        if movie_poster is None:
-            logging.error("❌ Movie poster not initialized, skipping task")
-            return
-            
-        success = await task_function()
-        if success:
-            logging.info(f"✅ Completed: {task_name}")
-        else:
-            logging.error(f"❌ Failed: {task_name}")
-    except Exception as e:
-        logging.error(f"❌ Error in {task_name}: {e}")
+def run_async_task(task_function, task_name):
+    """Wrapper to run async tasks from schedule"""
+    async def wrapper():
+        try:
+            logging.info(f"🕒 Starting: {task_name}")
+            if movie_poster is None:
+                logging.error("❌ Movie poster not initialized, skipping task")
+                return
+                
+            success = await task_function()
+            if success:
+                logging.info(f"✅ Completed: {task_name}")
+            else:
+                logging.error(f"❌ Failed: {task_name}")
+        except Exception as e:
+            logging.error(f"❌ Error in {task_name}: {e}")
+    
+    # Create and run the async task
+    asyncio.create_task(wrapper())
 
 def setup_schedule():
     """Setup all scheduled tasks"""
     
     # Daily update at 9:00 AM
     schedule.every().day.at("09:00").do(
-        lambda: asyncio.create_task(run_scheduled_task(movie_poster.post_daily_update, "Daily Update"))
+        lambda: run_async_task(movie_poster.post_daily_update, "Daily Update")
     )
     
     # Latest movies at 12:00 PM
     schedule.every().day.at("12:00").do(
-        lambda: asyncio.create_task(run_scheduled_task(movie_poster.post_latest_movies, "Latest Movies"))
+        lambda: run_async_task(movie_poster.post_latest_movies, "Latest Movies")
     )
     
     # Trending movies at 3:00 PM  
     schedule.every().day.at("15:00").do(
-        lambda: asyncio.create_task(run_scheduled_task(movie_poster.post_trending_movies, "Trending Movies"))
+        lambda: run_async_task(movie_poster.post_trending_movies, "Trending Movies")
     )
     
     # Upcoming movies at 6:00 PM
     schedule.every().day.at("18:00").do(
-        lambda: asyncio.create_task(run_scheduled_task(movie_poster.post_upcoming_movies, "Upcoming Movies"))
+        lambda: run_async_task(movie_poster.post_upcoming_movies, "Upcoming Movies")
     )
+    
+    # Test post every 2 hours (for debugging)
+    schedule.every(2).hours.do(
+        lambda: run_async_task(test_post, "Test Post")
+    )
+
+async def test_post():
+    """Test function to verify posting works"""
+    try:
+        test_msg = f"🧪 Bot Test Message\n⏰ {datetime.now().strftime('%Y-%m-%d %H:%M')}\n✅ Bot is running and monitoring schedule"
+        success = await movie_poster.post_to_channel(test_msg)
+        return success
+    except Exception as e:
+        logging.error(f"❌ Test post failed: {e}")
+        return False
 
 async def main():
     """Main scheduler loop"""
@@ -75,7 +94,7 @@ async def main():
     
     # Send startup message
     try:
-        startup_msg = f"🚀 Movie Bot Started Successfully!\n⏰ {datetime.now().strftime('%Y-%m-%d %H:%M')}\n📅 Next posts: 9AM, 12PM, 3PM, 6PM"
+        startup_msg = f"🚀 Movie Bot Started Successfully!\n⏰ {datetime.now().strftime('%Y-%m-%d %H:%M')}\n📅 Next posts: 9AM, 12PM, 3PM, 6PM\n🧪 Test posts every 2 hours"
         success = await movie_poster.post_to_channel(startup_msg)
         if success:
             logging.info("✅ Startup message sent")
