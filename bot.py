@@ -3,6 +3,7 @@ import logging
 import requests
 import asyncio
 from telegram import Bot
+from telegram.error import TelegramError
 from datetime import datetime
 
 # Configure logging
@@ -28,10 +29,27 @@ class MoviePoster:
             self.tmdb_base_url = "https://api.themoviedb.org/3"
             self.image_base_url = "https://image.tmdb.org/t/p/w500"
             logging.info("✅ MoviePoster initialized successfully")
+            
+            # Test bot connection
+            asyncio.run(self.test_bot_connection())
+            
         except Exception as e:
             logging.error(f"❌ Failed to initialize MoviePoster: {e}")
             raise
         
+    async def test_bot_connection(self):
+        """Test if bot can connect to Telegram"""
+        try:
+            me = await self.bot.get_me()
+            logging.info(f"✅ Bot connected successfully: @{me.username}")
+            return True
+        except TelegramError as e:
+            logging.error(f"❌ Bot connection failed: {e}")
+            return False
+        except Exception as e:
+            logging.error(f"❌ Unexpected error testing bot: {e}")
+            return False
+
     def get_movies(self, endpoint, params=None):
         """Fetch movies from TMDB API"""
         url = f"{self.tmdb_base_url}/{endpoint}"
@@ -44,10 +62,10 @@ class MoviePoster:
             if response.status_code == 200:
                 return response.json()
             else:
-                logging.error(f"API returned status code: {response.status_code}")
+                logging.error(f"❌ TMDB API returned status code: {response.status_code}")
                 return None
         except Exception as e:
-            logging.error(f"API Error: {e}")
+            logging.error(f"❌ TMDB API Error: {e}")
             return None
 
     def format_movie_post(self, movie, category="Latest"):
@@ -79,26 +97,46 @@ class MoviePoster:
         
         return message, None
 
-    async def post_to_channel(self, message, poster_url=None):
-        """Helper function to post to channel"""
-        try:
-            if poster_url:
-                await self.bot.send_photo(
-                    chat_id=CHANNEL_USERNAME,
-                    photo=poster_url,
-                    caption=message,
-                    parse_mode='HTML'
-                )
-            else:
-                await self.bot.send_message(
-                    chat_id=CHANNEL_USERNAME,
-                    text=message,
-                    parse_mode='HTML'
-                )
-            return True
-        except Exception as e:
-            logging.error(f"Error posting to channel: {e}")
-            return False
+    async def post_to_channel(self, message, poster_url=None, retries=3):
+        """Helper function to post to channel with retries"""
+        for attempt in range(retries):
+            try:
+                if poster_url:
+                    await self.bot.send_photo(
+                        chat_id=CHANNEL_USERNAME,
+                        photo=poster_url,
+                        caption=message,
+                        parse_mode='HTML',
+                        read_timeout=30,
+                        write_timeout=30,
+                        connect_timeout=30
+                    )
+                else:
+                    await self.bot.send_message(
+                        chat_id=CHANNEL_USERNAME,
+                        text=message,
+                        parse_mode='HTML',
+                        read_timeout=30,
+                        write_timeout=30,
+                        connect_timeout=30
+                    )
+                logging.info(f"✅ Message posted successfully (attempt {attempt + 1})")
+                return True
+                
+            except TelegramError as e:
+                logging.warning(f"⚠️ Telegram error (attempt {attempt + 1}/{retries}): {e}")
+                if attempt < retries - 1:
+                    await asyncio.sleep(5)  # Wait before retry
+                else:
+                    logging.error(f"❌ Failed to post after {retries} attempts: {e}")
+                    return False
+            except Exception as e:
+                logging.error(f"❌ Unexpected error posting (attempt {attempt + 1}): {e}")
+                if attempt < retries - 1:
+                    await asyncio.sleep(5)
+                else:
+                    return False
+        return False
 
     async def post_latest_movies(self):
         """Post latest movies to channel"""
@@ -107,15 +145,20 @@ class MoviePoster:
         
         if not data or 'results' not in data or not data['results']:
             logging.error("❌ No latest movies found")
-            return
+            return False
 
-        movies = data['results'][:2]  # Post 2 latest movies
+        movies = data['results'][:2]
+        success_count = 0
         
         for movie in movies:
             message, poster_url = self.format_movie_post(movie, "Latest Releases")
             success = await self.post_to_channel(message, poster_url)
             if success:
+                success_count += 1
                 await asyncio.sleep(5)  # Delay between posts
+
+        logging.info(f"✅ Posted {success_count}/{len(movies)} latest movies")
+        return success_count > 0
 
     async def post_trending_movies(self):
         """Post trending movies to channel"""
@@ -124,15 +167,20 @@ class MoviePoster:
         
         if not data or 'results' not in data or not data['results']:
             logging.error("❌ No trending movies found")
-            return
+            return False
 
         movies = data['results'][:2]
+        success_count = 0
         
         for movie in movies:
             message, poster_url = self.format_movie_post(movie, "Trending Now")
             success = await self.post_to_channel(message, poster_url)
             if success:
+                success_count += 1
                 await asyncio.sleep(5)
+
+        logging.info(f"✅ Posted {success_count}/{len(movies)} trending movies")
+        return success_count > 0
 
     async def post_upcoming_movies(self):
         """Post upcoming movies to channel"""
@@ -141,22 +189,32 @@ class MoviePoster:
         
         if not data or 'results' not in data or not data['results']:
             logging.error("❌ No upcoming movies found")
-            return
+            return False
 
         movies = data['results'][:2]
+        success_count = 0
         
         for movie in movies:
             message, poster_url = self.format_movie_post(movie, "Coming Soon")
             success = await self.post_to_channel(message, poster_url)
             if success:
+                success_count += 1
                 await asyncio.sleep(5)
+
+        logging.info(f"✅ Posted {success_count}/{len(movies)} upcoming movies")
+        return success_count > 0
 
     async def post_daily_update(self):
         """Post daily movie update"""
         logging.info("📤 Posting daily update...")
         try:
             header = f"🎬 <b>Daily Movie Update</b> 🎬\n📅 {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
-            await self.post_to_channel(header)
+            header_success = await self.post_to_channel(header)
+            
+            if not header_success:
+                logging.error("❌ Failed to post daily update header")
+                return False
+                
             await asyncio.sleep(2)
             
             # Post one from each category
@@ -166,20 +224,28 @@ class MoviePoster:
                 ("movie/upcoming", "Coming Soon")
             ]
             
+            success_count = 0
             for endpoint, category in categories:
                 data = self.get_movies(endpoint)
                 if data and data.get('results'):
                     movie = data['results'][0]
                     message, poster_url = self.format_movie_post(movie, category)
-                    await self.post_to_channel(message, poster_url)
+                    success = await self.post_to_channel(message, poster_url)
+                    if success:
+                        success_count += 1
                     await asyncio.sleep(3)
+            
+            logging.info(f"✅ Daily update completed: {success_count}/{len(categories)} posts successful")
+            return success_count > 0
                     
         except Exception as e:
             logging.error(f"❌ Error in daily update: {e}")
+            return False
 
 # Global instance
 try:
     movie_poster = MoviePoster()
+    logging.info("🎬 Movie Poster Bot is ready!")
 except Exception as e:
     logging.error(f"❌ Failed to create MoviePoster instance: {e}")
     movie_poster = None
