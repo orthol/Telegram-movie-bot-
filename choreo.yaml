@@ -1,28 +1,22 @@
-name: movie-auto-poster
-version: 1.0.0
-description: "Auto-posting movie updates to Telegram channels"
-
-components:
-  movie-bot:
-    type: job
-    build:
-      dockerfile: Dockerfile
-      context: .
-    environment:
-      variables:
-        - name: BOT_TOKEN
-          description: "Telegram Bot Token from BotFather"
-          required: true
-        - name: TMDB_API_KEY
-          description: "TMDB API Key from themoviedb.org"
-          required: true
-        - name: CHANNEL_USERNAME
-          description: "Telegram channel username (e.g., @YourChannel)"
-          required: true
-          default: "@YourChannelUsername"
-    schedule: "*/5 * * * *"  # Runs every 5 minutes to check schedule
-
-triggers:
-  deploy:
-    type: webhook
-    component: movie-bot
+component:
+  name: movie-auto-poster
+  description: "Auto-posting movie updates to Telegram channels"
+  type: job
+  build:
+    dockerfile: Dockerfile
+    context: .
+  environment:
+    variables:
+      - name: BOT_TOKEN
+        description: "Telegram Bot Token from BotFather"
+        required: true
+        sensitive: true
+      - name: TMDB_API_KEY
+        description: "TMDB API Key from themoviedb.org"
+        required: true
+        sensitive: true
+      - name: CHANNEL_USERNAME
+        description: "Telegram channel username (e.g., @YourChannel)"
+        required: true
+        default: "@YourChannelUsername"
+  schedule: "*/5 * * * *"  # Runs every 5 minutes to check schedule
