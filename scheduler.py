@@ -1,58 +1,11 @@
 import os
 import asyncio
-import schedule
-import time
-from datetime import datetime
-from bot import movie_poster
 import logging
-
-def run_async_task(task_function, task_name):
-    """Wrapper to run async tasks from schedule"""
-    async def wrapper():
-        try:
-            logging.info(f"🕒 Starting: {task_name}")
-            if movie_poster is None:
-                logging.error("❌ Movie poster not initialized, skipping task")
-                return
-                
-            success = await task_function()
-            if success:
-                logging.info(f"✅ Completed: {task_name}")
-            else:
-                logging.error(f"❌ Failed: {task_name}")
-        except Exception as e:
-            logging.error(f"❌ Error in {task_name}: {e}")
-    
-    # Create and run the async task
-    asyncio.create_task(wrapper())
-
-def setup_schedule():
-    """Setup all scheduled tasks"""
-    
-    # Daily update at 9:00 AM
-    schedule.every().day.at("09:00").do(
-        lambda: run_async_task(movie_poster.post_daily_update, "Daily Update")
-    )
-    
-    # Latest movies at 12:00 PM
-    schedule.every().day.at("12:00").do(
-        lambda: run_async_task(movie_poster.post_latest_movies, "Latest Movies")
-    )
-    
-    # Trending movies at 3:00 PM  
-    schedule.every().day.at("15:00").do(
-        lambda: run_async_task(movie_poster.post_trending_movies, "Trending Movies")
-    )
-    
-    # Upcoming movies at 6:00 PM
-    schedule.every().day.at("18:00").do(
-        lambda: run_async_task(movie_poster.post_upcoming_movies, "Upcoming Movies")
-    )
-    
-    logging.info("📅 Schedule configured: 9AM, 12PM, 3PM, 6PM daily")
+from datetime import datetime, time
+from bot import movie_poster
 
 async def main():
-    """Main scheduler loop"""
+    """Main scheduler loop with manual time checking"""
     logging.info("🤖 Movie Auto-Poster Bot Starting...")
     
     # Verify environment variables
@@ -76,12 +29,9 @@ async def main():
         logging.error("❌ Bot connection test failed. Please check BOT_TOKEN.")
         return
     
-    # Setup schedule
-    setup_schedule()
-    
     # Send startup message
     try:
-        startup_msg = f"🚀 Movie Bot Started Successfully!\n⏰ {datetime.now().strftime('%Y-%m-%d %H:%M')}\n📅 Next posts: 9AM, 12PM, 3PM, 6PM"
+        startup_msg = f"🚀 Movie Bot Started Successfully!\n⏰ {datetime.now().strftime('%Y-%m-%d %H:%M')}\n📅 Auto-posting: 9AM, 12PM, 3PM, 6PM daily"
         success = await movie_poster.post_to_channel(startup_msg)
         if success:
             logging.info("✅ Startup message sent")
@@ -90,13 +40,62 @@ async def main():
     except Exception as e:
         logging.error(f"❌ Could not send startup message: {e}")
     
-    logging.info("⏰ Scheduler started. Waiting for scheduled posts...")
+    # Track last run times to avoid duplicates
+    last_run = {
+        'daily_update': None,
+        'latest_movies': None,
+        'trending_movies': None,
+        'upcoming_movies': None
+    }
     
-    # Main loop
+    logging.info("⏰ Starting 24/7 scheduler loop...")
+    
+    # Main scheduler loop
     while True:
         try:
-            schedule.run_pending()
-            await asyncio.sleep(60)  # Check every minute
+            current_time = datetime.now()
+            current_hour = current_time.hour
+            current_minute = current_time.minute
+            
+            # Schedule configuration (24-hour format)
+            schedule_times = {
+                'daily_update': time(9, 0),    # 9:00 AM
+                'latest_movies': time(12, 0),  # 12:00 PM
+                'trending_movies': time(15, 0), # 3:00 PM
+                'upcoming_movies': time(18, 0) # 6:00 PM
+            }
+            
+            # Check each scheduled task
+            for task_name, scheduled_time in schedule_times.items():
+                # Check if it's the right time and we haven't run it recently
+                if (current_hour == scheduled_time.hour and 
+                    current_minute == scheduled_time.minute and
+                    (last_run.get(task_name) != current_time.date())):
+                    
+                    logging.info(f"🕒 Time for: {task_name}")
+                    
+                    # Run the appropriate task
+                    if task_name == 'daily_update':
+                        await movie_poster.post_daily_update()
+                    elif task_name == 'latest_movies':
+                        await movie_poster.post_latest_movies()
+                    elif task_name == 'trending_movies':
+                        await movie_poster.post_trending_movies()
+                    elif task_name == 'upcoming_movies':
+                        await movie_poster.post_upcoming_movies()
+                    
+                    # Update last run time
+                    last_run[task_name] = current_time.date()
+                    logging.info(f"✅ Completed: {task_name}")
+            
+            # Log current status every 30 minutes (optional)
+            if current_minute == 0 or current_minute == 30:
+                logging.info(f"📊 Bot is running... Current time: {current_time.strftime('%H:%M')}")
+                logging.info(f"📅 Next posts: 9:00, 12:00, 15:00, 18:00")
+            
+            # Wait for 1 minute before checking again
+            await asyncio.sleep(60)
+            
         except Exception as e:
             logging.error(f"❌ Scheduler error: {e}")
             await asyncio.sleep(60)
