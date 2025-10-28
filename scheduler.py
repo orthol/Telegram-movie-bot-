@@ -29,9 +29,16 @@ async def main():
         logging.error("❌ Bot connection test failed. Please check BOT_TOKEN.")
         return
     
+    # Test TMDB API connection
+    logging.info("🔌 Testing TMDB API connection...")
+    api_ok = await movie_poster.test_api_connection()
+    if not api_ok:
+        logging.error("❌ TMDB API test failed. Please check TMDB_API_KEY.")
+        return
+    
     # Send startup message
     try:
-        startup_msg = f"🚀 Movie Bot Started Successfully!\n⏰ {datetime.now().strftime('%Y-%m-%d %H:%M')}\n📅 Auto-posting: 9AM, 12PM, 3PM, 6PM daily"
+        startup_msg = f"🚀 Movie Bot Started Successfully!\n⏰ {datetime.now().strftime('%Y-%m-%d %H:%M')}\n📅 Auto-posting: 9AM, 12PM, 3PM, 6PM daily\n✅ Both Telegram & TMDB API connected!"
         success = await movie_poster.post_to_channel(startup_msg)
         if success:
             logging.info("✅ Startup message sent")
