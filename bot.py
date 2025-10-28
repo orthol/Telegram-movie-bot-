@@ -30,8 +30,12 @@ class MoviePoster:
             default_params.update(params)
             
         try:
-            response = requests.get(url, params=default_params)
-            return response.json()
+            response = requests.get(url, params=default_params, timeout=10)
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logging.error(f"API returned status code: {response.status_code}")
+                return None
         except Exception as e:
             logging.error(f"API Error: {e}")
             return None
@@ -56,7 +60,7 @@ class MoviePoster:
 📖 <b>Description:</b>
 {overview}
 
-#MovieUpdate #NewRelease #{category.replace(' ', '')}
+#MovieUpdate #{category.replace(' ', '')}
 """
         
         poster_path = movie.get('poster_path')
@@ -65,187 +69,103 @@ class MoviePoster:
         
         return message, None
 
+    async def post_to_channel(self, message, poster_url=None):
+        """Helper function to post to channel"""
+        try:
+            if poster_url:
+                await self.bot.send_photo(
+                    chat_id=CHANNEL_USERNAME,
+                    photo=poster_url,
+                    caption=message,
+                    parse_mode='HTML'
+                )
+            else:
+                await self.bot.send_message(
+                    chat_id=CHANNEL_USERNAME,
+                    text=message,
+                    parse_mode='HTML'
+                )
+            return True
+        except Exception as e:
+            logging.error(f"Error posting to channel: {e}")
+            return False
+
     async def post_latest_movies(self):
         """Post latest movies to channel"""
-        try:
-            data = self.get_movies("movie/now_playing", {'page': 1})
-            
-            if not data or 'results' not in data:
-                logging.error("Could not fetch latest movies")
-                return
+        logging.info("📤 Posting latest movies...")
+        data = self.get_movies("movie/now_playing", {'page': 1})
+        
+        if not data or 'results' not in data or not data['results']:
+            logging.error("❌ No latest movies found")
+            return
 
-            movies = data['results'][:2]
-            
-            for movie in movies:
-                message, poster_url = self.format_movie_post(movie, "Latest Releases")
-                
-                if poster_url:
-                    try:
-                        await self.bot.send_photo(
-                            chat_id=CHANNEL_USERNAME,
-                            photo=poster_url,
-                            caption=message,
-                            parse_mode='HTML'
-                        )
-                    except Exception as e:
-                        logging.error(f"Error sending photo: {e}")
-                        await self.bot.send_message(
-                            chat_id=CHANNEL_USERNAME,
-                            text=message,
-                            parse_mode='HTML'
-                        )
-                else:
-                    await self.bot.send_message(
-                        chat_id=CHANNEL_USERNAME,
-                        text=message,
-                        parse_mode='HTML'
-                    )
-                
-                await asyncio.sleep(5)
-                
-            logging.info("✅ Latest movies posted successfully")
-            
-        except Exception as e:
-            logging.error(f"Error posting latest movies: {e}")
+        movies = data['results'][:2]  # Post 2 latest movies
+        
+        for movie in movies:
+            message, poster_url = self.format_movie_post(movie, "Latest Releases")
+            success = await self.post_to_channel(message, poster_url)
+            if success:
+                await asyncio.sleep(5)  # Delay between posts
 
     async def post_trending_movies(self):
         """Post trending movies to channel"""
-        try:
-            data = self.get_movies("trending/movie/week")
-            
-            if not data or 'results' not in data:
-                logging.error("Could not fetch trending movies")
-                return
+        logging.info("📤 Posting trending movies...")
+        data = self.get_movies("trending/movie/week")
+        
+        if not data or 'results' not in data or not data['results']:
+            logging.error("❌ No trending movies found")
+            return
 
-            movies = data['results'][:2]
-            
-            for movie in movies:
-                message, poster_url = self.format_movie_post(movie, "Trending Now")
-                
-                if poster_url:
-                    try:
-                        await self.bot.send_photo(
-                            chat_id=CHANNEL_USERNAME,
-                            photo=poster_url,
-                            caption=message,
-                            parse_mode='HTML'
-                        )
-                    except Exception as e:
-                        logging.error(f"Error sending photo: {e}")
-                        await self.bot.send_message(
-                            chat_id=CHANNEL_USERNAME,
-                            text=message,
-                            parse_mode='HTML'
-                        )
-                else:
-                    await self.bot.send_message(
-                        chat_id=CHANNEL_USERNAME,
-                        text=message,
-                        parse_mode='HTML'
-                    )
-                
+        movies = data['results'][:2]
+        
+        for movie in movies:
+            message, poster_url = self.format_movie_post(movie, "Trending Now")
+            success = await self.post_to_channel(message, poster_url)
+            if success:
                 await asyncio.sleep(5)
-                
-            logging.info("✅ Trending movies posted successfully")
-            
-        except Exception as e:
-            logging.error(f"Error posting trending movies: {e}")
 
     async def post_upcoming_movies(self):
         """Post upcoming movies to channel"""
-        try:
-            data = self.get_movies("movie/upcoming")
-            
-            if not data or 'results' not in data:
-                logging.error("Could not fetch upcoming movies")
-                return
+        logging.info("📤 Posting upcoming movies...")
+        data = self.get_movies("movie/upcoming")
+        
+        if not data or 'results' not in data or not data['results']:
+            logging.error("❌ No upcoming movies found")
+            return
 
-            movies = data['results'][:2]
-            
-            for movie in movies:
-                message, poster_url = self.format_movie_post(movie, "Coming Soon")
-                
-                if poster_url:
-                    try:
-                        await self.bot.send_photo(
-                            chat_id=CHANNEL_USERNAME,
-                            photo=poster_url,
-                            caption=message,
-                            parse_mode='HTML'
-                        )
-                    except Exception as e:
-                        logging.error(f"Error sending photo: {e}")
-                        await self.bot.send_message(
-                            chat_id=CHANNEL_USERNAME,
-                            text=message,
-                            parse_mode='HTML'
-                        )
-                else:
-                    await self.bot.send_message(
-                        chat_id=CHANNEL_USERNAME,
-                        text=message,
-                        parse_mode='HTML'
-                    )
-                
+        movies = data['results'][:2]
+        
+        for movie in movies:
+            message, poster_url = self.format_movie_post(movie, "Coming Soon")
+            success = await self.post_to_channel(message, poster_url)
+            if success:
                 await asyncio.sleep(5)
-                
-            logging.info("✅ Upcoming movies posted successfully")
-            
-        except Exception as e:
-            logging.error(f"Error posting upcoming movies: {e}")
 
     async def post_daily_update(self):
-        """Post daily movie update with mixed content"""
+        """Post daily movie update"""
+        logging.info("📤 Posting daily update...")
         try:
-            # Send header message
-            header = f"🎬 <b>Daily Movie Update</b> 🎬\n📅 {datetime.now().strftime('%Y-%m-%d')}\n\n"
-            await self.bot.send_message(
-                chat_id=CHANNEL_USERNAME,
-                text=header,
-                parse_mode='HTML'
-            )
-            
+            header = f"🎬 <b>Daily Movie Update</b> 🎬\n📅 {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
+            await self.post_to_channel(header)
             await asyncio.sleep(2)
             
-            # Post 1 latest movie
-            latest_data = self.get_movies("movie/now_playing", {'page': 1})
-            if latest_data and 'results' in latest_data and latest_data['results']:
-                movie = latest_data['results'][0]
-                message, poster_url = self.format_movie_post(movie, "Latest Release")
-                if poster_url:
-                    try:
-                        await self.bot.send_photo(CHANNEL_USERNAME, photo=poster_url, caption=message, parse_mode='HTML')
-                    except:
-                        await self.bot.send_message(CHANNEL_USERNAME, text=message, parse_mode='HTML')
-                await asyncio.sleep(3)
+            # Post one from each category
+            categories = [
+                ("movie/now_playing", "Latest Release"),
+                ("trending/movie/week", "Trending Now"), 
+                ("movie/upcoming", "Coming Soon")
+            ]
             
-            # Post 1 trending movie
-            trending_data = self.get_movies("trending/movie/week")
-            if trending_data and 'results' in trending_data and trending_data['results']:
-                movie = trending_data['results'][0]
-                message, poster_url = self.format_movie_post(movie, "Trending Now")
-                if poster_url:
-                    try:
-                        await self.bot.send_photo(CHANNEL_USERNAME, photo=poster_url, caption=message, parse_mode='HTML')
-                    except:
-                        await self.bot.send_message(CHANNEL_USERNAME, text=message, parse_mode='HTML')
-                await asyncio.sleep(3)
-            
-            # Post 1 upcoming movie
-            upcoming_data = self.get_movies("movie/upcoming")
-            if upcoming_data and 'results' in upcoming_data and upcoming_data['results']:
-                movie = upcoming_data['results'][0]
-                message, poster_url = self.format_movie_post(movie, "Coming Soon")
-                if poster_url:
-                    try:
-                        await self.bot.send_photo(CHANNEL_USERNAME, photo=poster_url, caption=message, parse_mode='HTML')
-                    except:
-                        await self.bot.send_message(CHANNEL_USERNAME, text=message, parse_mode='HTML')
-            
-            logging.info("✅ Daily update posted successfully")
-            
+            for endpoint, category in categories:
+                data = self.get_movies(endpoint)
+                if data and data.get('results'):
+                    movie = data['results'][0]
+                    message, poster_url = self.format_movie_post(movie, category)
+                    await self.post_to_channel(message, poster_url)
+                    await asyncio.sleep(3)
+                    
         except Exception as e:
-            logging.error(f"Error posting daily update: {e}")
+            logging.error(f"❌ Error in daily update: {e}")
 
 # Global instance
 movie_poster = MoviePoster()
