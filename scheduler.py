@@ -5,7 +5,7 @@ from datetime import datetime, time
 from bot import movie_poster
 
 async def main():
-    """Main scheduler loop with manual time checking"""
+    """Main scheduler loop with immediate posting"""
     logging.info("🤖 Movie Auto-Poster Bot Starting...")
     
     # Verify environment variables
@@ -38,7 +38,7 @@ async def main():
     
     # Send startup message
     try:
-        startup_msg = f"🚀 Movie Bot Started Successfully!\n⏰ {datetime.now().strftime('%Y-%m-%d %H:%M')}\n📅 Auto-posting: 9AM, 12PM, 3PM, 6PM daily\n✅ Both Telegram & TMDB API connected!"
+        startup_msg = f"🚀 Movie Bot Started Successfully!\n⏰ {datetime.now().strftime('%Y-%m-%d %H:%M')}\n📅 Testing: Posting every minute"
         success = await movie_poster.post_to_channel(startup_msg)
         if success:
             logging.info("✅ Startup message sent")
@@ -47,64 +47,41 @@ async def main():
     except Exception as e:
         logging.error(f"❌ Could not send startup message: {e}")
     
-    # Track last run times to avoid duplicates
-    last_run = {
-        'daily_update': None,
-        'latest_movies': None,
-        'trending_movies': None,
-        'upcoming_movies': None
-    }
+    logging.info("⏰ Starting 1-minute interval posting...")
     
-    logging.info("⏰ Starting 24/7 scheduler loop...")
+    # Counter to rotate through different movie types
+    post_counter = 0
     
-    # Main scheduler loop
+    # Main scheduler loop - post every minute
     while True:
         try:
             current_time = datetime.now()
-            current_hour = current_time.hour
-            current_minute = current_time.minute
+            logging.info(f"🕒 Posting cycle #{post_counter + 1} at {current_time.strftime('%H:%M:%S')}")
             
-            # Schedule configuration (24-hour format)
-            schedule_times = {
-                'daily_update': time(9, 0),    # 9:00 AM
-                'latest_movies': time(12, 0),  # 12:00 PM
-                'trending_movies': time(15, 0), # 3:00 PM
-                'upcoming_movies': time(18, 0) # 6:00 PM
-            }
+            # Rotate through different movie types
+            if post_counter % 4 == 0:
+                logging.info("🎬 Posting: Latest Movies")
+                await movie_poster.post_latest_movies()
+            elif post_counter % 4 == 1:
+                logging.info("🔥 Posting: Trending Movies")
+                await movie_poster.post_trending_movies()
+            elif post_counter % 4 == 2:
+                logging.info("📅 Posting: Upcoming Movies")
+                await movie_poster.post_upcoming_movies()
+            else:
+                logging.info("📊 Posting: Daily Update")
+                await movie_poster.post_daily_update()
             
-            # Check each scheduled task
-            for task_name, scheduled_time in schedule_times.items():
-                # Check if it's the right time and we haven't run it recently
-                if (current_hour == scheduled_time.hour and 
-                    current_minute == scheduled_time.minute and
-                    (last_run.get(task_name) != current_time.date())):
-                    
-                    logging.info(f"🕒 Time for: {task_name}")
-                    
-                    # Run the appropriate task
-                    if task_name == 'daily_update':
-                        await movie_poster.post_daily_update()
-                    elif task_name == 'latest_movies':
-                        await movie_poster.post_latest_movies()
-                    elif task_name == 'trending_movies':
-                        await movie_poster.post_trending_movies()
-                    elif task_name == 'upcoming_movies':
-                        await movie_poster.post_upcoming_movies()
-                    
-                    # Update last run time
-                    last_run[task_name] = current_time.date()
-                    logging.info(f"✅ Completed: {task_name}")
+            post_counter += 1
+            logging.info(f"✅ Completed posting cycle #{post_counter}")
+            logging.info("⏰ Waiting 60 seconds for next post...")
             
-            # Log current status every 30 minutes (optional)
-            if current_minute == 0 or current_minute == 30:
-                logging.info(f"📊 Bot is running... Current time: {current_time.strftime('%H:%M')}")
-                logging.info(f"📅 Next posts: 9:00, 12:00, 15:00, 18:00")
-            
-            # Wait for 1 minute before checking again
+            # Wait for 60 seconds before next post
             await asyncio.sleep(60)
             
         except Exception as e:
-            logging.error(f"❌ Scheduler error: {e}")
+            logging.error(f"❌ Error in posting cycle: {e}")
+            logging.info("⏰ Retrying in 60 seconds...")
             await asyncio.sleep(60)
 
 if __name__ == '__main__':
