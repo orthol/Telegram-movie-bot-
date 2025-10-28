@@ -16,11 +16,21 @@ BOT_TOKEN = os.getenv('BOT_TOKEN')
 TMDB_API_KEY = os.getenv('TMDB_API_KEY')
 CHANNEL_USERNAME = os.getenv('CHANNEL_USERNAME', '@YourChannelUsername')
 
+# Validate required environment variables
+if not BOT_TOKEN or not TMDB_API_KEY or not CHANNEL_USERNAME:
+    logging.error("❌ Missing required environment variables")
+    exit(1)
+
 class MoviePoster:
     def __init__(self):
-        self.bot = Bot(token=BOT_TOKEN)
-        self.tmdb_base_url = "https://api.themoviedb.org/3"
-        self.image_base_url = "https://image.tmdb.org/t/p/w500"
+        try:
+            self.bot = Bot(token=BOT_TOKEN)
+            self.tmdb_base_url = "https://api.themoviedb.org/3"
+            self.image_base_url = "https://image.tmdb.org/t/p/w500"
+            logging.info("✅ MoviePoster initialized successfully")
+        except Exception as e:
+            logging.error(f"❌ Failed to initialize MoviePoster: {e}")
+            raise
         
     def get_movies(self, endpoint, params=None):
         """Fetch movies from TMDB API"""
@@ -168,4 +178,8 @@ class MoviePoster:
             logging.error(f"❌ Error in daily update: {e}")
 
 # Global instance
-movie_poster = MoviePoster()
+try:
+    movie_poster = MoviePoster()
+except Exception as e:
+    logging.error(f"❌ Failed to create MoviePoster instance: {e}")
+    movie_poster = None
