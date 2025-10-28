@@ -44,21 +44,6 @@ def setup_schedule():
     schedule.every().day.at("18:00").do(
         lambda: asyncio.create_task(run_scheduled_task(movie_poster.post_upcoming_movies, "Upcoming Movies"))
     )
-    
-    # Test post every hour (for debugging)
-    schedule.every().hour().do(
-        lambda: asyncio.create_task(run_scheduled_task(test_post, "Test Post"))
-    )
-
-async def test_post():
-    """Test function to verify posting works"""
-    try:
-        test_msg = f"🧪 Bot Test Message\n⏰ {datetime.now().strftime('%Y-%m-%d %H:%M')}\n✅ Bot is running and monitoring schedule"
-        success = await movie_poster.post_to_channel(test_msg)
-        return success
-    except Exception as e:
-        logging.error(f"❌ Test post failed: {e}")
-        return False
 
 async def main():
     """Main scheduler loop"""
@@ -76,6 +61,13 @@ async def main():
     # Check if movie_poster initialized
     if movie_poster is None:
         logging.error("❌ Movie poster failed to initialize. Check previous errors.")
+        return
+    
+    # Test bot connection
+    logging.info("🔌 Testing bot connection...")
+    connection_ok = await movie_poster.test_bot_connection()
+    if not connection_ok:
+        logging.error("❌ Bot connection test failed. Please check BOT_TOKEN.")
         return
     
     # Setup schedule
