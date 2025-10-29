@@ -1,68 +1,61 @@
 import os
 import asyncio
 import logging
-import threading
 from datetime import datetime
-from flask import Flask
-from bot import movie_poster
+from bot import movie_poster, POST_INTERVAL
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
 
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return "✅ Movie Bot is alive and running!"
-
-async def post_loop():
-    """Continuously post movie updates every 2 minutes"""
+async def main():
+    """Main scheduler - checks every 30 minutes for new movies"""
+    logging.info("🤖 Movie Auto-Poster Bot Starting...")
+    
+    # Validate environment
     if not all([os.getenv('BOT_TOKEN'), os.getenv('TMDB_API_KEY'), os.getenv('CHANNEL_USERNAME')]):
-        logging.error("❌ Missing environment variables. Exiting loop.")
+        logging.error("❌ Missing environment variables")
         return
-
-    if movie_poster is None:
-        logging.error("❌ movie_poster not initialized.")
+    
+    # Test connections
+    if not await movie_poster.test_bot_connection():
         return
-
-    await movie_poster.post_to_channel("🚀 Movie Bot Started — posting every 2 minutes!")
-    cycle = 0
-
+    
+    # Send startup message
+    await movie_poster.post_to_channel(
+        f"🚀 <b>Movie Updates Bot Started!</b>\n"
+        f"⏰ Auto-checking for new movies every {POST_INTERVAL} minutes\n"
+        f"🎬 Posts include: Title, Genre, Release Date, Rating, Overview\n"
+        f"🔘 With inline buttons to your bot!"
+    )
+    
+    logging.info(f"✅ Bot started - Checking every {POST_INTERVAL} minutes")
+    
+    check_count = 0
     while True:
         try:
-            cycle += 1
-            current_time = datetime.now().strftime('%H:%M:%S')
-            logging.info(f"🔄 Starting cycle #{cycle} at {current_time}")
-
-            if cycle % 3 == 1:
-                await movie_poster.post_latest_movies()
-            elif cycle % 3 == 2:
-                await movie_poster.post_trending_movies()
+            check_count += 1
+            current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            
+            logging.info(f"🔄 Check #{check_count} at {current_time}")
+            
+            # Check and post new movies
+            success = await movie_poster.post_new_movies()
+            
+            if success:
+                logging.info(f"✅ Check #{check_count} - New movies posted")
             else:
-                await movie_poster.post_upcoming_movies()
-
-            logging.info(f"✅ Cycle #{cycle} finished successfully.")
-            await asyncio.sleep(120)  # wait 2 minutes
-
+                logging.info(f"ℹ️ Check #{check_count} - No new movies")
+            
+            # Wait for next check (30 minutes)
+            logging.info(f"⏰ Next check in {POST_INTERVAL} minutes...")
+            await asyncio.sleep(POST_INTERVAL * 60)
+            
         except Exception as e:
-            logging.error(f"💥 Error in cycle #{cycle}: {e}")
-            await asyncio.sleep(60)  # wait 1 min before retry
-
-def run_async_loop():
-    """Runs the async post loop forever in a thread-safe way"""
-    while True:
-        try:
-            asyncio.run(post_loop())
-        except Exception as e:
-            logging.error(f"⚠️ Async loop crashed: {e}. Restarting...")
-        # short delay before restart
-        import time
-        time.sleep(5)
-
-def run_flask():
-    """Keeps service alive for Choreo health checks"""
-    port = int(os.getenv("PORT", 8000))
-    app.run(host="0.0.0.0", port=port)
+            logging.error(f"💥 Error in check #{check_count}: {e}")
+            logging.info("🔄 Retrying in 5 minutes...")
+            await asyncio.sleep(300)  # 5 minutes
 
 if __name__ == '__main__':
-    threading.Thread(target=run_async_loop, daemon=True).start()
-    run_flask()
+    asyncio.run(main())
