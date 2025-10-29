@@ -2,9 +2,9 @@ import os
 import logging
 import requests
 import asyncio
-from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.error import TelegramError
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # Configure logging
 logging.basicConfig(
@@ -16,8 +16,9 @@ logging.basicConfig(
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 TMDB_API_KEY = os.getenv('TMDB_API_KEY')
 CHANNEL_USERNAME = os.getenv('CHANNEL_USERNAME')
-BOT_USERNAME = "@halowbot"  # Your bot username
-POST_INTERVAL = 30  # minutes
+BOT_USERNAME = "@halowbot"
+POST_INTERVAL = 30
+MINI_APP_URL = "https://your-mini-app-url.com"  # Your Mini App URL
 
 # Genre mapping from TMDB
 GENRE_MAP = {
@@ -33,7 +34,7 @@ class MoviePoster:
         self.bot = Bot(token=BOT_TOKEN)
         self.tmdb_base_url = "https://api.themoviedb.org/3"
         self.image_base_url = "https://image.tmdb.org/t/p/w500"
-        self.posted_movies = set()  # Track already posted movies
+        self.posted_movies = set()
         logging.info("✅ MoviePoster initialized")
         
     async def test_bot_connection(self):
@@ -67,8 +68,8 @@ class MoviePoster:
         genres = [GENRE_MAP.get(gid, "") for gid in genre_ids]
         return " • ".join([g for g in genres if g])
 
-    def format_movie_post(self, movie):
-        """Format movie data with genres and inline button"""
+    def format_movie_post(self, movie, for_channel=True):
+        """Format movie data - DIFFERENT BUTTONS FOR CHANNEL VS BOT"""
         title = movie.get('title', 'N/A')
         release_date = movie.get('release_date', 'TBA')
         rating = movie.get('vote_average', 'N/A')
@@ -96,10 +97,21 @@ class MoviePoster:
 {overview}
 """
         
-        # Create inline keyboard
-        keyboard = [
-            [InlineKeyboardButton("🎥 Get Movie", url=f"https://t.me/{BOT_USERNAME[1:]}")]
-        ]
+        # DIFFERENT BUTTONS FOR CHANNEL VS BOT
+        if for_channel:
+            # CHANNEL POSTS: Only "Get Movie" button
+            keyboard = [
+                [InlineKeyboardButton("🎥 Get Movie", url=f"https://t.me/{BOT_USERNAME[1:]}")]
+            ]
+        else:
+            # BOT MESSAGES: Both "Get Movie" and "Mini App" buttons
+            keyboard = [
+                [
+                    InlineKeyboardButton("🎥 Get Movie", url=f"https://t.me/{BOT_USERNAME[1:]}"),
+                    InlineKeyboardButton("📱 Mini App", web_app=WebAppInfo(url=MINI_APP_URL))
+                ]
+            ]
+        
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         poster_path = movie.get('poster_path')
@@ -128,6 +140,29 @@ class MoviePoster:
             return True
         except Exception as e:
             logging.error(f"❌ Post failed: {e}")
+            return False
+
+    async def send_to_user(self, user_id, message, poster_url=None, reply_markup=None):
+        """Send message to user with Mini App button"""
+        try:
+            if poster_url:
+                await self.bot.send_photo(
+                    chat_id=user_id,
+                    photo=poster_url,
+                    caption=message,
+                    parse_mode='HTML',
+                    reply_markup=reply_markup
+                )
+            else:
+                await self.bot.send_message(
+                    chat_id=user_id,
+                    text=message,
+                    parse_mode='HTML',
+                    reply_markup=reply_markup
+                )
+            return True
+        except Exception as e:
+            logging.error(f"❌ Send to user failed: {e}")
             return False
 
     async def get_new_movies(self):
@@ -165,7 +200,7 @@ class MoviePoster:
         return new_movies
 
     async def post_new_movies(self):
-        """Post 3-4 new movies if available"""
+        """Post 3-4 new movies to CHANNEL (without Mini App button)"""
         logging.info("🔍 Checking for new movies...")
         
         new_movies = await self.get_new_movies()
@@ -181,17 +216,27 @@ class MoviePoster:
         logging.info(f"📤 Found {len(movies_to_post)} new movies to post")
         
         for movie_data, category in movies_to_post:
-            message, poster_url, reply_markup = self.format_movie_post(movie_data)
+            # CHANNEL POST: for_channel=True (only "Get Movie" button)
+            message, poster_url, reply_markup = self.format_movie_post(movie_data, for_channel=True)
             message = f"🏷️ <b>{category}</b>\n" + message
             
             success = await self.post_to_channel(message, poster_url, reply_markup)
             if success:
                 success_count += 1
-                logging.info(f"✅ Posted: {movie_data.get('title')}")
-                await asyncio.sleep(2)  # Small delay between posts
+                logging.info(f"✅ Posted to channel: {movie_data.get('title')}")
+                await asyncio.sleep(2)
         
-        logging.info(f"🎉 Posted {success_count} new movies")
+        logging.info(f"🎉 Posted {success_count} new movies to channel")
         return success_count > 0
+
+    async def send_movie_to_user(self, user_id, movie_data, category="Recommended"):
+        """Send movie to USER with Mini App button"""
+        # USER MESSAGE: for_channel=False (both buttons)
+        message, poster_url, reply_markup = self.format_movie_post(movie_data, for_channel=False)
+        message = f"🎯 <b>{category}</b>\n" + message
+        
+        success = await self.send_to_user(user_id, message, poster_url, reply_markup)
+        return success
 
 # Global instance
 movie_poster = MoviePoster()
