@@ -18,7 +18,7 @@ TMDB_API_KEY = os.getenv('TMDB_API_KEY')
 CHANNEL_USERNAME = os.getenv('CHANNEL_USERNAME')
 BOT_USERNAME = "@halowbot"
 POST_INTERVAL = 30
-MINI_APP_URL = "https://your-mini-app-url.com"  # Your Mini App URL
+MINI_APP_URL = "https://movie-theta-ochre.vercel.app/"  # Your Mini App URL
 
 # Genre mapping from TMDB
 GENRE_MAP = {
